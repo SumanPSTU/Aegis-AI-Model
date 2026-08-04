@@ -1,6 +1,7 @@
+from io import BytesIO
 from pathlib import Path
 
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import joblib
@@ -71,20 +72,34 @@ def predict_health(data: HealthInput):
 
 
 @app.post("/brain")
-async def predict_brain(file: UploadFile = File(...)):
-    # Open and process the uploaded image
-    image = Image.open(file.file).convert("RGB")
-    image = image.resize((224, 224))
+async def predict_brain(request: Request):
+    content_type = request.headers.get("content-type", "")
 
-    # Normalize and reshape to match model input requirements (1, 224, 224, 3)
-    image_array = np.array(image) / 255.0
-    image_array = image_array.reshape(1, 224, 224, 3)
+    try:
+        if content_type.startswith("multipart/form-data"):
+            form = await request.form()
+            uploaded_file = form.get("file") or form.get("image")
+            if uploaded_file is None:
+                return JSONResponse(status_code=400, content={"error": "Please upload an image using the 'file' or 'image' form field."})
+            image_bytes = await uploaded_file.read()
+        else:
+            image_bytes = await request.body()
+            if not image_bytes:
+                return JSONResponse(status_code=400, content={"error": "No image data received."})
 
-    prediction = brain_model.predict(image_array)
+        image = Image.open(BytesIO(image_bytes)).convert("RGB")
+        image = image.resize((224, 224))
 
-    return {
-        "prediction": prediction.tolist()
-    }
+        image_array = np.array(image, dtype=np.float32) / 255.0
+        image_array = image_array.reshape(1, 224, 224, 3)
+
+        prediction = brain_model.predict(image_array)
+
+        return {
+            "prediction": prediction.tolist()
+        }
+    except Exception as exc:
+        return JSONResponse(status_code=400, content={"error": f"Invalid image upload: {exc}"})
 
 
 if __name__ == "__main__":

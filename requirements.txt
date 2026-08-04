@@ -2,6 +2,7 @@ fastapi
 uvicorn
 joblib
 pandas
-numpy
+numpy>=2.0,<2.8
+scipy==1.18.0
 pillow
 scikit-learn==1.6.1
